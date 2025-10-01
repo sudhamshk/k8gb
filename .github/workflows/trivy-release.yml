@@ -1,0 +1,250 @@
+name: Trivy Container Security Scan (Release)
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to scan with Trivy'
+        required: true
+        default: 'v0.15.0'
+
+permissions:
+  contents: read
+  packages: read
+  security-events: write
+
+jobs:
+  trivy-policy-enforcement:
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    name: Trivy Policy Enforcement
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        image: 
+          - docker.io/absaoss/k8gb:${{ github.ref_name }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Run Trivy with Policy Enforcement (Critical/High only)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ matrix.image }}
+          format: 'json'
+          output: 'trivy-policy-results.json'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          scanners: 'vuln'
+          vuln-type: 'os,library'
+          exit-code: '1'  # Fail on critical/high vulnerabilities
+          trivyignores: '.trivyignore'
+          trivy-config: 'trivy.yaml'
+          helm-kube-version: '1.21.0'
+
+      - name: Generate Policy Enforcement Summary
+        run: |
+          echo "## 🛡️ Trivy Policy Enforcement Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ matrix.image }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Policy:** Block CRITICAL and HIGH severity vulnerabilities" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f "trivy-policy-results.json" ]; then
+            echo "✅ **Policy Check Passed** - No critical or high severity vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Policy Check Failed** - Critical or high severity vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+  trivy-container:
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    name: Trivy Container Image Scan
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        image: 
+          - docker.io/absaoss/k8gb:${{ github.ref_name }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Run Trivy vulnerability scanner on container image (SARIF)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ matrix.image }}
+          format: 'sarif'
+          output: 'trivy-container-${{ matrix.image }}.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          ignore-unfixed: true
+          scanners: 'vuln,secret,license'
+          vuln-type: 'os,library'
+          exit-code: '1'
+          trivyignores: '.trivyignore'
+          trivy-config: 'trivy.yaml'
+          helm-kube-version: '1.21.0'
+
+      - name: Run Trivy vulnerability scanner on container image (JSON)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ matrix.image }}
+          format: 'json'
+          output: 'trivy-container-${{ matrix.image }}.json'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          ignore-unfixed: true
+          scanners: 'vuln,secret,license'
+          vuln-type: 'os,library'
+          exit-code: '0'  # Don't fail on JSON output
+          trivyignores: '.trivyignore'
+          trivy-config: 'trivy.yaml'
+          helm-kube-version: '1.21.0'
+
+      - name: Run Trivy vulnerability scanner on container image (Table)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ matrix.image }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          scanners: 'vuln'
+          vuln-type: 'os,library'
+          exit-code: '0'  # Don't fail on table output
+          trivyignores: '.trivyignore'
+          trivy-config: 'trivy.yaml'
+          helm-kube-version: '1.21.0'
+
+      - name: Upload Trivy container scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@45775bd8235c68ba998cffa5171334d58593da47 # v3.28.15
+        if: always()
+        with:
+          sarif_file: 'trivy-container-${{ matrix.image }}.sarif'
+          category: 'trivy-container'
+
+
+      - name: Generate Trivy scan summary
+        run: |
+          echo "## 🔍 Trivy Security Scan Results for ${{ matrix.image }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ matrix.image }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Scan completed:** $(date -u)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Detailed results are available in the [Security tab](https://github.com/${{ github.repository }}/security/code-scanning)." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+  trivy-sbom-scan:
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    name: Trivy SBOM Vulnerability Scan
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Download SBOM from release
+        run: |
+          # Download the SBOM file from the release
+          curl -L -o k8gb.sbom.json "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/k8gb_${{ github.ref_name }}_linux_amd64.tar.gz.sbom.json"
+
+      - name: Run Trivy vulnerability scanner on SBOM (SARIF)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: 'k8gb.sbom.json'
+          format: 'sarif'
+          output: 'trivy-sbom-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          ignore-unfixed: true
+          scanners: 'vuln'
+          vuln-type: 'os,library'
+          exit-code: '1'
+          trivyignores: '.trivyignore'
+          trivy-config: 'trivy.yaml'
+          helm-kube-version: '1.21.0'
+
+      - name: Run Trivy vulnerability scanner on SBOM (JSON)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: 'k8gb.sbom.json'
+          format: 'json'
+          output: 'trivy-sbom-results.json'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          ignore-unfixed: true
+          scanners: 'vuln'
+          vuln-type: 'os,library'
+          exit-code: '0'  # Don't fail on JSON output
+          trivyignores: '.trivyignore'
+          trivy-config: 'trivy.yaml'
+          helm-kube-version: '1.21.0'
+
+      - name: Upload Trivy SBOM scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@45775bd8235c68ba998cffa5171334d58593da47 # v3.28.15
+        if: always()
+        with:
+          sarif_file: 'trivy-sbom-results.sarif'
+          category: 'trivy-sbom'
+
+  trivy-summary:
+    permissions:
+      contents: read
+    name: Trivy Scan Summary
+    runs-on: ubuntu-24.04
+    needs: [trivy-policy-enforcement, trivy-container, trivy-sbom-scan]
+    steps:
+      - name: Generate comprehensive Trivy scan summary
+        run: |
+          echo "# 🔒 Trivy Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Release:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Scan Date:** $(date -u)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📊 Scan Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Policy Enforcement (CRITICAL/HIGH vulnerabilities)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Container Image Vulnerability Scanning" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Secret Detection" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ License Compliance Scanning" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ SBOM-based Vulnerability Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🔗 Security Resources" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- [Security Tab](https://github.com/${{ github.repository }}/security/code-scanning)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Security Policy](https://github.com/${{ github.repository }}/blob/master/SECURITY.md)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Security Insights](https://github.com/${{ github.repository }}/blob/master/SECURITY-INSIGHTS.yml)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🛡️ DevSecOps Pipeline Integration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This release includes comprehensive security scanning as part of our DevSecOps pipeline:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trivy** for vulnerability scanning, secret detection, and policy enforcement" >> $GITHUB_STEP_SUMMARY
+          echo "- **CodeQL** for static code analysis" >> $GITHUB_STEP_SUMMARY
+          echo "- **Terrascan** for infrastructure security" >> $GITHUB_STEP_SUMMARY
+          echo "- **OpenSSF Scorecard** for security posture assessment" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cosign** for cryptographic signing and verification" >> $GITHUB_STEP_SUMMARY
+          echo "- **SLSA Level 3** provenance attestations" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY

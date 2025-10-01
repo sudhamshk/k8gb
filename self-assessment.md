@@ -214,6 +214,7 @@ In order to secure the SDLC from development to deployment, the following measur
     - **Functional Testing**: Terratest and Chainsaw end-to-end testing pipelines for functionality validation
   - **Security-Focused Scanning and Analysis**:
     - **Static Security Analysis**: CodeQL pipeline for vulnerability detection and security issue identification
+    - **Vulnerability Scanning**: Trivy pipeline for comprehensive vulnerability scanning of filesystem, dependencies, and configuration files
     - **Security Posture Assessment**: OpenSSF Scorecard pipeline for continuous security best practices monitoring
 
 - Release Process:
@@ -221,6 +222,7 @@ In order to secure the SDLC from development to deployment, the following measur
   - **Cryptographic Signing**: All releases signed using Cosign with keyless signing for authenticity and integrity
   - **SLSA Level 3 Compliance**: Generate provenance attestations using official SLSA framework for supply chain security
   - **Software Bill of Materials (SBOM)**: Comprehensive SBOM generation for transparency and vulnerability tracking
+  - **Container Security Scanning**: Trivy pipeline for comprehensive container image vulnerability scanning, secret detection, and license compliance
 
 - Software Composition Analysis
   - Integration of dependency management tool (Mend Renovate) to monitor and secure third-party dependencies.
