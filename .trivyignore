@@ -1,0 +1,58 @@
+# Trivy Ignore File for k8gb Project
+# This file contains vulnerabilities and packages to ignore during Trivy scans
+# Format: One entry per line, comments start with #
+
+# =============================================================================
+# CRITICAL VULNERABILITIES TO IGNORE
+# =============================================================================
+# Add specific CVEs that are false positives or have been mitigated
+# Example: CVE-2023-12345
+
+# =============================================================================
+# HIGH VULNERABILITIES TO IGNORE  
+# =============================================================================
+# Add specific CVEs that are false positives or have been mitigated
+# Example: CVE-2023-67890
+
+# =============================================================================
+# MEDIUM VULNERABILITIES TO IGNORE
+# =============================================================================
+# Add specific CVEs that are false positives or have been mitigated
+# Example: CVE-2023-11111
+
+# =============================================================================
+# PACKAGES TO IGNORE
+# =============================================================================
+# Add specific packages that are known to have false positives
+# Example: golang.org/x/net
+# Example: github.com/some/package
+
+# =============================================================================
+# LICENSE ISSUES TO IGNORE
+# =============================================================================
+# Add specific license issues that are acceptable for the project
+# Example: MIT
+# Example: Apache-2.0
+
+# =============================================================================
+# SECRET DETECTION FALSE POSITIVES
+# =============================================================================
+# Add specific secret patterns that are false positives
+# Example: test-api-key
+# Example: example-password
+
+# =============================================================================
+# CONFIGURATION ISSUES TO IGNORE
+# =============================================================================
+# Add specific configuration issues that are intentional
+# Example: allow-privilege-escalation
+# Example: run-as-non-root
+
+# =============================================================================
+# NOTES
+# =============================================================================
+# - Always document why a vulnerability is being ignored
+# - Review ignored vulnerabilities regularly (quarterly)
+# - Remove entries when vulnerabilities are fixed or no longer relevant
+# - Use specific CVE IDs rather than broad patterns when possible
+# - Consider using severity-based ignores for temporary situations

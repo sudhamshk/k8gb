@@ -1,0 +1,235 @@
+name: Trivy Security Scan (Build)
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '**.svg'
+      - '**.drawio'
+      - '.spelling'
+  pull_request:
+    branches:
+      - master
+    paths-ignore:
+      - '**.md'
+      - '**.svg'
+      - '**.drawio'
+      - '.spelling'
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  skip-check:
+    permissions:
+      actions: write
+      contents: read
+    runs-on: ubuntu-latest
+    name: Skip the job?
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+    - name: Harden Runner
+      uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+      with:
+        egress-policy: audit
+
+    - id: skip_check
+      uses: fkirc/skip-duplicate-actions@f75f66ce1886f00957d99748a42c724f4330bdcf # v5.3.1
+      with:
+        skip_after_successful_duplicate: 'true'
+        do_not_skip: '["workflow_dispatch", "schedule"]'
+
+  trivy-filesystem:
+    permissions:
+      contents: read
+      security-events: write
+    name: Trivy Filesystem Scan
+    runs-on: ubuntu-24.04
+    needs: skip-check
+    if: ${{ needs.skip-check.outputs.should_skip != 'true' }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'v3.12.0'
+
+      - name: Download Helm dependencies
+        run: |
+          cd chart/k8gb
+          helm dependency update
+
+      - name: Run Trivy vulnerability scanner in repo mode (SARIF)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          ignore-unfixed: true
+          scanners: 'vuln,secret,license,config'
+          vuln-type: 'os,library'
+          exit-code: '1'
+          trivyignores: '.trivyignore'
+          trivy-config: 'trivy.yaml'
+
+      - name: Run Trivy vulnerability scanner in repo mode (JSON)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'json'
+          output: 'trivy-results.json'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          ignore-unfixed: true
+          scanners: 'vuln,secret,license,config'
+          vuln-type: 'os,library'
+          exit-code: '0'  # Don't fail on JSON output
+          trivyignores: '.trivyignore'
+          trivy-config: 'trivy.yaml'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@45775bd8235c68ba998cffa5171334d58593da47 # v3.28.15
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'trivy-filesystem'
+
+  trivy-dependency:
+    permissions:
+      contents: read
+      security-events: write
+    name: Trivy Dependency Scan
+    runs-on: ubuntu-24.04
+    needs: skip-check
+    if: ${{ needs.skip-check.outputs.should_skip != 'true' }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'v3.12.0'
+
+      - name: Download Helm dependencies
+        run: |
+          cd chart/k8gb
+          helm dependency update
+
+      - name: Run Trivy vulnerability scanner in repo mode for Go dependencies (SARIF)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-dependency-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          ignore-unfixed: true
+          scanners: 'vuln,secret,license'
+          vuln-type: 'os,library'
+          exit-code: '1'
+          trivyignores: '.trivyignore'
+          trivy-config: 'trivy.yaml'
+
+      - name: Run Trivy vulnerability scanner in repo mode for Go dependencies (JSON)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'json'
+          output: 'trivy-dependency-results.json'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          ignore-unfixed: true
+          scanners: 'vuln,secret,license'
+          vuln-type: 'os,library'
+          exit-code: '0'  # Don't fail on JSON output
+          trivyignores: '.trivyignore'
+          trivy-config: 'trivy.yaml'
+
+      - name: Upload Trivy dependency scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@45775bd8235c68ba998cffa5171334d58593da47 # v3.28.15
+        if: always()
+        with:
+          sarif_file: 'trivy-dependency-results.sarif'
+          category: 'trivy-dependency'
+
+  trivy-config:
+    permissions:
+      contents: read
+      security-events: write
+    name: Trivy Configuration Scan
+    runs-on: ubuntu-24.04
+    needs: skip-check
+    if: ${{ needs.skip-check.outputs.should_skip != 'true' }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'v3.12.0'
+
+      - name: Download Helm dependencies
+        run: |
+          cd chart/k8gb
+          helm dependency update
+
+      - name: Run Trivy vulnerability scanner in config mode (SARIF)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-config-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          scanners: 'config'
+          exit-code: '1'
+          trivyignores: '.trivyignore'
+          trivy-config: 'trivy.yaml'
+
+      - name: Run Trivy vulnerability scanner in config mode (JSON)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'json'
+          output: 'trivy-config-results.json'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          scanners: 'config'
+          exit-code: '0'  # Don't fail on JSON output
+          trivyignores: '.trivyignore'
+          trivy-config: 'trivy.yaml'
+
+      - name: Upload Trivy config scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@45775bd8235c68ba998cffa5171334d58593da47 # v3.28.15
+        if: always()
+        with:
+          sarif_file: 'trivy-config-results.sarif'
+          category: 'trivy-config'

@@ -1,0 +1,24 @@
+# Trivy Configuration File
+# This file configures Trivy to use a compatible Kubernetes version for Helm chart scanning
+
+kubernetes:
+  version: "1.21.0"
+
+helm:
+  skip-files:
+    - "Chart.lock"
+    - "charts/**"
+
+# Additional Trivy configuration
+vuln:
+  type: ["os", "library"]
+  severity: ["CRITICAL", "HIGH", "MEDIUM"]
+
+secret:
+  severity: ["CRITICAL", "HIGH", "MEDIUM"]
+
+license:
+  severity: ["CRITICAL", "HIGH", "MEDIUM"]
+
+config:
+  severity: ["CRITICAL", "HIGH", "MEDIUM"]
